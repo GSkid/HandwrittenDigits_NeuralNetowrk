@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 dtype = torch.float
-# Running on the gpu; to change to cpu, switch "cudo:0" to "cpu"
+# Running on the gpu; to change to cpu, switch "cuda:0" to "cpu"
 device = torch.device("cuda:0")
 # Creating a debug variable to prevent unnecssary printing
 DEBUG = False
@@ -33,12 +33,12 @@ weight2 = torch.randn(Num_Out_Nodes, H, device=device, dtype=dtype, requires_gra
 learning_rate = 1e-2
 # How many iterations the system goes through
 num_iter = 500
-# Array that stores the error for each image as a unique node
-errors = np.arange(num_images)
 
 ############################################################################################
 # Running the training of the neural network
 for t in range(num_iter):
+    # Array that stores the error for each image as a unique node
+    errors = torch.empty(num_images, device=device, dtype=dtype)
     for i in range(len(img_in)):
         # The network makes a guess based on each image and the weights
         # Implements a ReLU with clamp(min=0) so that we zero out any negative results
@@ -98,9 +98,9 @@ for t in range(num_iter):
         # The expected result should be an array of all zeros except for a
         # single 1 in the img_label[i]'s digit location
         num_array = [*range(0, 10, 1)]
-        image_label = img_label[i].clone()
-        one_hot = int(num_array == image_label)
-        correct_result = torch.tensor(one_hot, device=device, dtype=dtype)
+        for index in range(10):
+            num_array[index] = int(num_array[index] == img_label[i])
+        correct_result = torch.tensor(num_array, device=device, dtype=dtype, requires_grad=True)
 
         if DEBUG:
             # Printing out dimensions for the correct_result
@@ -116,14 +116,13 @@ for t in range(num_iter):
 
         if DEBUG:
             print()
-            print("Reulting Error")
+            print("Resulting Error")
             print(errors[i])
     #loop
 
     # Computing the total loss of the guess
     # Creates a matrix of a single number, representing the total loss
-    loss = torch.tensor(errors.sum(), device=device, dtype=dtype, requires_grad=True)
-
+    loss = errors.clone().sum()
 
     # Prints out the loss every 50 iterations
     if t % 50 == 0:
@@ -134,7 +133,7 @@ for t in range(num_iter):
     print(t, loss.item())
 
     # Backprop with pyTorch for stochastic gradient descent
-    loss.backward()
+    loss.backward(retain_graph=True)
 
     print("Weight1 and Weight2 grad")
     print(weight1.grad, weight2.grad)
