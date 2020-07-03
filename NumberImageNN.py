@@ -8,6 +8,7 @@ dtype = torch.float
 device = torch.device("cuda:0")
 # Creating a debug variable to prevent unnecssary printing
 DEBUG = False
+torch.autograd.set_detect_anomaly(True)
 
 # Getting the data from the MNIST database
 datapath = "MNIST/"
@@ -45,6 +46,8 @@ model = nn.Sequential(
 
 optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
+loss = torch.tensor(0, device=device, dtype=dtype)
+
 ############################################################################################
 # Running the training of the neural network
 for t in range(num_iter):
@@ -63,9 +66,9 @@ for t in range(num_iter):
                 print(guess_set)
                 print(label_set.t())
 
-            # Calculating loss of the most recent batch
-            loss = nn.functional.nll_loss(nn.LogSoftmax(guess_set), label_set.t())
-            loss.backward(retain_graph=True)
+            # Calculating negative log-likelihood loss of the most recent batch
+            loss = torch.tensor(nn.functional.nll_loss(guess_set, label_set.t()), device=device, dtype=dtype, requires_grad=True)
+            loss.backward()
             optimizer.step()
 
             if DEBUG:
@@ -74,15 +77,17 @@ for t in range(num_iter):
                 print(i, loss)
                 print()
 
-            # Prints out the loss every 50 iterations
-            if i % 1000 == 0:
-                print()
-                print("Iter:")
-                print(i)
-                print("Loss:")
-                print(loss)
-                print()
+        else:
+            batch_index = batch_index + 1
 
-            else:
-                batch_index = batch_index + 1
+        # Prints out the loss every 50 iterations
+        if i % 1000 == 0:
+            print()
+            print("Iter:")
+            print(i)
+            print("NN Guess:")
+            print(nn_guess)
+            print("Label")
+            print(img_label[i])
+            print()
 #loop
