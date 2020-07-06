@@ -29,13 +29,24 @@ H1, H2, Num_In_Nodes, Num_Out_Nodes, Batch_Size = 100, 50, (28*28), 10, 64
 # Setting params for the nn training
 # Defines how how much the network learns from each iteration
 learning_rate = 1e-2
-# How many iterations the system goes through
+
+# The number of iterations the system goes through
 num_iter = 1
+
 # Creating matrices to store the results of the nn_guess and labels
 guess_set = torch.zeros(Batch_Size, Num_Out_Nodes, device=device, dtype=dtype)
 label_set = torch.zeros(Batch_Size, device=device, dtype=torch.int64)
 batch_index = 0
 
+# Creating a torch tensor to store the result of the loss function
+loss = torch.tensor(0, device=device, dtype=dtype)
+
+# Simple model with the following layers
+# 1. Input Layer - 784 nodes
+# 2. Hidden Layer 1 - 100 Nodes (Linear translation & ReLU)
+# 3. Hidden Layer 2 - 50 Nodes (Linear translation & ReLU)
+# 4. Output Layer - 10 Nodes (Linear translation) [represents the likelihood of each digit 0-9]
+# --Ideally, there should be a LogSoftMax function at the end (with a dimension of 1), but I can't get that working yet
 model = nn.Sequential(
     nn.Linear(Num_In_Nodes, H1).cuda(),
     nn.ReLU().cuda(),
@@ -44,16 +55,26 @@ model = nn.Sequential(
     nn.Linear(H2, Num_Out_Nodes).cuda()
 )
 
+# Using built-in pyTorch optimizer that automatically updates weights based on the calculated gradients with optimizer.step()
+# Specifically using a stochastic gradient descent b/c it's the only back-prop method I know
 optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
-loss = torch.tensor(0, device=device, dtype=dtype)
 
 ############################################################################################
 # Running the training of the neural network
+# Essentially, it runs through all 60000 training images and guesses a digit for each image
+# Then it calculates the loss (how far off) the guess was from the provided label
+# In minibatches of 64 images, it updates the weights so that it progressively gets closer and closer to the correct guess
+
 for t in range(num_iter):
     for i in range(len(img_in)):
+        # Resetting the optimizer's gradient for a new image
+        # Maybe this should be done only after a minibatch or maybe update weights after each image?
+        # The problem is that the backward() function wants an array with more than one row, which is another reason
+        #   to do the backprop in minibatches
         optimizer.zero_grad()
 
+        # Runs the image through the model described above
         nn_guess = model(img_in[i])
 
         # Storing the guess and correct result into matrices for loss computation
@@ -68,7 +89,9 @@ for t in range(num_iter):
 
             # Calculating negative log-likelihood loss of the most recent batch
             loss = torch.tensor(nn.functional.nll_loss(guess_set, label_set.t()), device=device, dtype=dtype, requires_grad=True)
+            # Backprop to calculate gradients for each of the weights
             loss.backward()
+            # Then use the optimizer to update the weight arrays based on the calculated gradients
             optimizer.step()
 
             if DEBUG:
@@ -77,6 +100,8 @@ for t in range(num_iter):
                 print(i, loss)
                 print()
 
+        # Increase the index of the batch if we aren't at a full minibatch
+        # Important to keep it in this format to prevent in-place operations from messing up the gradient calculation
         else:
             batch_index = batch_index + 1
 
@@ -90,4 +115,5 @@ for t in range(num_iter):
             print("Label")
             print(img_label[i])
             print()
+    #loop
 #loop
