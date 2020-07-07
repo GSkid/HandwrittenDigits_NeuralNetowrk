@@ -91,10 +91,8 @@ for t in range(num_iter):
         # Prints out the loss every 50 iterations
         if iter_counter % 100 == 0:
             print()
-            print("Iter:")
-            print(iter_counter)
-            print("Loss")
-            print(loss)
+            print("Iter: ", iter_counter)
+            print("Loss: ", loss.item())
         iter_counter += 1
     #loop
 #loop
@@ -103,7 +101,7 @@ for t in range(num_iter):
 ############################################################################################
 # Testing the neural network
 
-num_correct, total_num = 0, 0
+num_correct, total_num, temp, guess = 0, 0, 0, 0
 
 for test_image, test_label in valloader:
 
@@ -114,27 +112,36 @@ for test_image, test_label in valloader:
     with torch.no_grad():
         log_prob = model(test_image.cuda())
 
-    #
+    # Transform the model's guess to a value between 0 and 1, with numbers closer to 1 being confident guesses
     test_guess = torch.exp(log_prob)
-    test_guess = list(test_guess.cpu().numpy()[0])
-    iter = 0
-    for index in range(10):
-        # print(test_guess)
-        if iter == 0:
-            guess = iter
-        elif test_guess[index] > guess:
-            guess = iter
-        iter += iter
-    # print()
 
-    print("Guess: ", guess, "     Label: ", test_label)
+    # We use numpy here to creat a list of the 10 digit likelihoods so we can find the max
+    test_guess = list(test_guess.cpu().numpy()[0])
+
+    if DEBUG:
+        print("TestGuess:", test_guess)
+        print()
+
+    # Iterate through the test_guess likelihoods to find the max (the network's guess)
+    for index in range(0, 10):
+        # This inits temp at the beginning of each test_guess
+        if index == 0:
+            guess = index
+            temp = test_guess[index]
+        # Checks if each succeeding index is greater than the previous max
+        elif test_guess[index] > temp:
+            guess = index
+            temp = test_guess[index]
+
+    # print("Guess: ", guess, "     Label: ", test_label)
     if guess == test_label.item():
         num_correct += 1
     total_num += 1
 #loop
+print()
 print("##############################")
 print("END RESULTS")
 print("Total Tested Images: ", total_num)
 print("Total Correct Guesses: ", num_correct)
-print("Percentage Correct: ", num_correct/total_num)
+print("Percentage Correct: ", (num_correct/total_num)*100,"%")
 print("##############################")
