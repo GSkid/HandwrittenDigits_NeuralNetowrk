@@ -1,7 +1,9 @@
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.optim as optim
+import torchvision
+import numpy as np
+from torchvision import transforms, datasets
 
 dtype = torch.float
 # Running on the gpu; to change to cpu, switch "cuda:0" to "cpu"
@@ -10,21 +12,16 @@ device = torch.device("cuda:0")
 DEBUG = False
 torch.autograd.set_detect_anomaly(True)
 
-# Getting the data from the MNIST database
-datapath = "MNIST/"
-train_data = np.loadtxt(datapath+"mnist_train.csv", delimiter=",")
-test_data = np.loadtxt(datapath+"mnist_test.csv", delimiter=",")
-num_images = 60000
-# Mapping the image nodes to a value b/t 0.01:1 will make calculations much easier
-mapping = 0.99 / 255
+# We need to transform the image nodes to tensors and then convert to standard normal distribution
+transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)), ])
 
-# Creating matrices that hold the images
-# Each image is stored in a row with the first column holding the correct label
-img_in = torch.tensor(train_data[:, 1:], device=device, dtype=dtype) * mapping + 0.01
-img_label = torch.tensor(train_data[:, :1], device=device, dtype=dtype)
+# Getting the data from the MNIST pyTorch database and putting the files in the project directory
+trainset = datasets.MNIST('./MNIST_Train', download=True, train=True, transform=transform)
+valset = datasets.MNIST('./MNIST_Test', download=True, train=False, transform=transform)
+valloader = torch.utils.data.DataLoader(valset, batch_size=1, shuffle=True)
 
 # Setting params for the weights
-H1, H2, Num_In_Nodes, Num_Out_Nodes, Batch_Size = 100, 50, (28*28), 10, 64
+H1, H2, Num_In_Nodes, Num_Out_Nodes = 100, 50, (28*28), 10
 
 # Setting params for the nn training
 # Defines how how much the network learns from each iteration
@@ -32,14 +29,7 @@ learning_rate = 1e-2
 
 # The number of iterations the system goes through
 num_iter = 1
-
-# Creating matrices to store the results of the nn_guess and labels
-guess_set = torch.zeros(Batch_Size, Num_Out_Nodes, device=device, dtype=dtype)
-label_set = torch.zeros(Batch_Size, device=device, dtype=torch.int64)
-batch_index = 0
-
-# Creating a torch tensor to store the result of the loss function
-loss = torch.tensor(0, device=device, dtype=dtype)
+iter_counter = 0
 
 # Simple model with the following layers
 # 1. Input Layer - 784 nodes
@@ -52,68 +42,99 @@ model = nn.Sequential(
     nn.ReLU().cuda(),
     nn.Linear(H1, H2).cuda(),
     nn.ReLU().cuda(),
-    nn.Linear(H2, Num_Out_Nodes).cuda()
+    nn.Linear(H2, Num_Out_Nodes).cuda(),
+    nn.LogSoftmax(dim=1).cuda()
 )
 
 # Using built-in pyTorch optimizer that automatically updates weights based on the calculated gradients with optimizer.step()
 # Specifically using a stochastic gradient descent b/c it's the only back-prop method I know
 optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-
+optimizer.zero_grad()
 
 ############################################################################################
-# Running the training of the neural network
+# Training the neural network
 # Essentially, it runs through all 60000 training images and guesses a digit for each image
 # Then it calculates the loss (how far off) the guess was from the provided label
 # In minibatches of 64 images, it updates the weights so that it progressively gets closer and closer to the correct guess
 
 for t in range(num_iter):
-    for i in range(len(img_in)):
-        # Resetting the optimizer's gradient for a new image
-        # Maybe this should be done only after a minibatch or maybe update weights after each image?
-        # The problem is that the backward() function wants an array with more than one row, which is another reason
-        #   to do the backprop in minibatches
+    print("Iteration ", t)
+    iter_counter = 0
+
+    # Separating the dataset into batches of 64 and putting it into the data loader so we can easily iterate through
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True)
+    for image_batch, label_batch in trainloader:
+
+
+        # First flatten the images to 1x784 arrays
+        image_batch = image_batch.view(image_batch.shape[0], -1).cuda()
+
+        # Resetting the optimizer's gradient for a new image batch
         optimizer.zero_grad()
 
         # Runs the image through the model described above
-        nn_guess = model(img_in[i])
+        nn_guess = model(image_batch).cuda()
 
-        # Storing the guess and correct result into matrices for loss computation
-        guess_set[batch_index] = nn_guess
-        label_set[batch_index] = img_label[i]
+        # Calculating negative log-likelihood loss of the most recent batch
+        loss = nn.functional.nll_loss(nn_guess, label_batch.cuda()).cuda()
+        # Backprop to calculate gradients for each of the weights
+        loss.backward()
+        # Then use the optimizer to update the weight arrays based on the calculated gradients
+        optimizer.step()
 
-        # Calculating loss and updating weights after each minibatch
-        if batch_index == 63:
-            if DEBUG:
-                print(guess_set)
-                print(label_set.t())
-
-            # Calculating negative log-likelihood loss of the most recent batch
-            loss = torch.tensor(nn.functional.nll_loss(guess_set, label_set.t()), device=device, dtype=dtype, requires_grad=True)
-            # Backprop to calculate gradients for each of the weights
-            loss.backward()
-            # Then use the optimizer to update the weight arrays based on the calculated gradients
-            optimizer.step()
-
-            if DEBUG:
-                print()
-                print("Resulting Error")
-                print(i, loss)
-                print()
-
-        # Increase the index of the batch if we aren't at a full minibatch
-        # Important to keep it in this format to prevent in-place operations from messing up the gradient calculation
-        else:
-            batch_index = batch_index + 1
+        if DEBUG:
+            print()
+            print("Resulting Error")
+            print(iter_counter, loss)
+            print()
 
         # Prints out the loss every 50 iterations
-        if i % 1000 == 0:
+        if iter_counter % 100 == 0:
             print()
             print("Iter:")
-            print(i)
-            print("NN Guess:")
-            print(nn_guess)
-            print("Label")
-            print(img_label[i])
-            print()
+            print(iter_counter)
+            print("Loss")
+            print(loss)
+        iter_counter += 1
     #loop
 #loop
+
+
+############################################################################################
+# Testing the neural network
+
+num_correct, total_num = 0, 0
+
+for test_image, test_label in valloader:
+
+    # Then flatten the image to the same size as out training images (1, 784)
+    test_image = test_image[0].view(1, Num_In_Nodes)
+
+    # Run each test image through the model to generate a log probability spectrum for each digit
+    with torch.no_grad():
+        log_prob = model(test_image.cuda())
+
+    #
+    test_guess = torch.exp(log_prob)
+    test_guess = list(test_guess.cpu().numpy()[0])
+    iter = 0
+    for index in range(10):
+        # print(test_guess)
+        if iter == 0:
+            guess = iter
+        elif test_guess[index] > guess:
+            guess = iter
+        iter += iter
+    # print()
+
+    print("Guess: ", guess, "     Label: ", test_label)
+    if guess == test_label.item():
+        num_correct += 1
+    total_num += 1
+#loop
+print("##############################")
+print("END RESULTS")
+print("Total Tested Images: ", total_num)
+print("Total Correct Guesses: ", num_correct)
+print("Percentage Correct: ", num_correct/total_num)
+print("##############################")
