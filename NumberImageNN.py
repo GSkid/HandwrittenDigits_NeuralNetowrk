@@ -1,13 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision
-import numpy as np
 from torchvision import transforms, datasets
 
+# Default variable type for our torch tensors
 dtype = torch.float
+
 # Running on the gpu; to change to cpu, switch "cuda:0" to "cpu"
 device = torch.device("cuda:0")
+
 # Creating a debug variable to prevent unnecssary printing
 DEBUG = False
 torch.autograd.set_detect_anomaly(True)
@@ -25,10 +26,10 @@ H1, H2, Num_In_Nodes, Num_Out_Nodes = 100, 50, (28*28), 10
 
 # Setting params for the nn training
 # Defines how how much the network learns from each iteration
-learning_rate = 1e-2
+learning_rate = 5e-3
 
 # The number of iterations the system goes through
-num_iter = 1
+num_iter = 2
 iter_counter = 0
 
 # Simple model with the following layers
@@ -57,8 +58,13 @@ optimizer.zero_grad()
 # Then it calculates the loss (how far off) the guess was from the provided label
 # In minibatches of 64 images, it updates the weights so that it progressively gets closer and closer to the correct guess
 
+print("-------------------------------------")
+print("Starting training phase...")
 for t in range(num_iter):
-    print("Iteration ", t)
+    print()
+    print("--")
+    print("Iteration ", t+1)
+    # Reset the counter for the total number of iterations
     iter_counter = 0
 
     # Separating the dataset into batches of 64 and putting it into the data loader so we can easily iterate through
@@ -91,7 +97,7 @@ for t in range(num_iter):
         # Prints out the loss every 50 iterations
         if iter_counter % 100 == 0:
             print()
-            print("Iter: ", iter_counter)
+            print("Minibatch: ", iter_counter)
             print("Loss: ", loss.item())
         iter_counter += 1
     #loop
@@ -101,7 +107,23 @@ for t in range(num_iter):
 ############################################################################################
 # Testing the neural network
 
+# Initializing testing vars
 num_correct, total_num, temp, guess = 0, 0, 0, 0
+# This dict holds the weight of missed guesses for each digit
+incorrect_guesses = {
+    0 : 0,
+    1 : 0,
+    2 : 0,
+    3 : 0,
+    4 : 0,
+    5 : 0,
+    6 : 0,
+    7 : 0,
+    8 : 0,
+    9 : 0
+}
+print("-------------------------------------")
+print("Starting testing phase...")
 
 for test_image, test_label in valloader:
 
@@ -133,15 +155,35 @@ for test_image, test_label in valloader:
             guess = index
             temp = test_guess[index]
 
-    # print("Guess: ", guess, "     Label: ", test_label)
+    # Check if the guessed digit matches the label
     if guess == test_label.item():
         num_correct += 1
+    # If it doesn't we add one to the incorrect_guesses weight dictionary
+    else:
+        incorrect_guesses[test_label.item()] += 1
+
+    # Just to keep track of the total cases, we add one every test
     total_num += 1
+    if (total_num % 1000) == 0:
+        print(".")
 #loop
+print("Testing phase complete!")
+print("-------------------------------------")
 print()
 print("##############################")
 print("END RESULTS")
 print("Total Tested Images: ", total_num)
 print("Total Correct Guesses: ", num_correct)
 print("Percentage Correct: ", (num_correct/total_num)*100,"%")
+print("Incorrect Guess Stats:")
+print("   Num of Missed 0's: ", incorrect_guesses.get(0))
+print("   Num of Missed 1's: ", incorrect_guesses.get(1))
+print("   Num of Missed 2's: ", incorrect_guesses.get(2))
+print("   Num of Missed 3's: ", incorrect_guesses.get(3))
+print("   Num of Missed 4's: ", incorrect_guesses.get(4))
+print("   Num of Missed 5's: ", incorrect_guesses.get(5))
+print("   Num of Missed 6's: ", incorrect_guesses.get(6))
+print("   Num of Missed 7's: ", incorrect_guesses.get(7))
+print("   Num of Missed 8's: ", incorrect_guesses.get(8))
+print("   Num of Missed 9's: ", incorrect_guesses.get(9))
 print("##############################")
